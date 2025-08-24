@@ -389,45 +389,79 @@ def extract_compatibility_text_from_email(email_message):
     except Exception as e:
         logger.error(f"Error extracting compatibility text from email: {str(e)}", exc_info=True)
         return f"Error processing compatibility information: {str(e)}"
-def create_compatibility_text_directly(top_matches):
-    """Create compatibility text directly from the match data with proper formatting and line breaks"""
+def create_compatibility_text_directly(top_matches, new_user_name=None):
+    """Create plain text email message directly from match data identical to create_email_message text 
+    but without PDF reference - for storing in 'Email Text' column"""
     try:
         if not isinstance(top_matches, pd.DataFrame) or len(top_matches) == 0:
             logger.warning("No valid match data provided")
             return "No matches found"
         
-        compatibility_parts = []
+        # Ensure user_name is provided
+        if not new_user_name:
+            new_user_name = "User"
         
-        for i, (_, row) in enumerate(top_matches.iterrows(), 1):
+        # Ensure the user's name is in title case
+        name_title_case = str(new_user_name).title() if new_user_name else "User"
+        
+        # Calculate overall compatibility score for proper sorting
+        top_matches_copy = top_matches.copy()
+        top_matches_copy['Overall_Score'] = (
+            top_matches_copy.get('PPF %', 0) + 
+            top_matches_copy.get('FavLikes %', 0) + 
+            top_matches_copy.get('Others %', 0)
+        ) / 3
+        
+        # Sort by Overall_Score in DESCENDING order (highest percentage first)
+        sorted_matches = top_matches_copy.sort_values(by='Overall_Score', ascending=False).reset_index(drop=True)
+        
+        # Start of the plain text message
+        message_text = f"""Dear {name_title_case},
+Congratulations on creating your Sapta.ai Digital Persona.
+Here are your closest matches with Compatibility scores (sorted by highest match percentage):
+"""
+        
+        match_parts = []
+        match_counter = 1
+        for _, row in sorted_matches.iterrows():
             try:
                 match_name = row.get('Full Name', 'Unknown')
                 ppf_score = float(row.get('PPF %', 0))
                 fav_likes_score = float(row.get('FavLikes %', 0))
                 others_score = float(row.get('Others %', 0))
-                total_score = (ppf_score + fav_likes_score + others_score) / 3
-
-                # Format each match with proper line breaks and indentation
-                match_text = f"**{i}. {match_name} - Overall Compatibility Score : {total_score:.1f}%**    \nCompatibility Breakdown:       \n- Personal, Professional & Family Details: {ppf_score:.1f}%       \n- Favorites, Likes & Hobbies: {fav_likes_score:.1f}%       \n- Other Requirements and Preferences: {others_score:.1f}%"
+                overall_score = row.get('Overall_Score', 0)
                 
-                compatibility_parts.append(match_text)
-                logger.info(f"Processed match {i}: {match_name} with score {total_score:.1f}%")
+                # Skip "No Match Found" entries
+                if match_name == "No Match Found" or overall_score == 0:
+                    continue
+
+                # Format each match in plain text with proper spacing
+                match_text = f"{match_counter}. {match_name} - Overall Compatibility Score : {overall_score:.1f}%\n   Compatibility Breakdown:\n       - Personal, Professional & Family Details: {ppf_score:.1f}%\n      - Favorites, Likes & Hobbies: {fav_likes_score:.1f}%\n     - Other Requirements and Preferences: {others_score:.1f}%"
+                
+                match_parts.append(match_text)
+                match_counter += 1
+                logger.info(f"Processed match {match_counter-1}: {match_name} with score {overall_score:.1f}%")
                 
             except Exception as e:
-                logger.error(f"Error processing match {i}: {e}")
+                logger.error(f"Error processing match: {e}")
                 continue
         
-        if compatibility_parts:
-            # Join matches with a line break between each match
-            result = '\n'.join(compatibility_parts)
-            logger.info(f"Successfully created compatibility text for {len(compatibility_parts)} matches")
-            logger.debug(f"Formatted result preview:\n{result[:300]}...")
-            return result
-        else:
-            return "No compatibility information available"
+        # Join all matches
+        if match_parts:
+            message_text += '\n'.join(match_parts)
+        
+        # Add closing message without PDF reference
+        message_text += f"""
+Best Wishes
+
+Team Sapta.ai"""
+        
+        logger.info(f"Successfully created plain text email message for {match_counter-1} matches")
+        return message_text
             
     except Exception as e:
-        logger.error(f"Error creating compatibility text: {str(e)}", exc_info=True)
-        return f"Error creating compatibility information: {str(e)}"
+        logger.error(f"Error creating plain text email message: {str(e)}", exc_info=True)
+        return f"Error creating email message: {str(e)}"
 def format_match_block(match_parts):
     """Format a match block into a single line with proper spacing"""
     try:
@@ -1199,7 +1233,7 @@ def process_matrimonial_data(df):
         top_percentages,
         top_matches_df
     )
-def create_last_response_pdf(new_user, new_user_name,email_col, match_percentage=None):
+def create_last_response_pdf(new_user, new_user_name, email_col, match_percentage=None):
     """Create a PDF for the last response using the same format as match PDFs"""
     try:
         pdf = EnhancedSinglePageMatchesPDF()
@@ -1387,45 +1421,74 @@ def create_last_response_pdf(new_user, new_user_name,email_col, match_percentage
             current_y = add_compact_section(pdf, "Requirements & Preferences", current_y)
             current_y += 3
             
-            # Prepare Requirement and Preferences lists
-            requirements = []
-            all_preferences = []  # Collect all preference values first
+            # Enhanced Requirements extraction + Original Preferences logic
+            all_requirements = []
+            all_preferences = []  # Collect all preference values first (ORIGINAL LOGIC)
             
-            # First pass: collect all preference values from all fields
             logger.info(f"Processing {len(preference_fields)} preference fields")
+            
+            # Extract ALL requirement names where user has selected/filled values (NO FILTERING OR DUPLICATE REMOVAL)
             for field in preference_fields:
                 value = new_user[field].values[0]
-                # Only include if value is not empty, not 'no', not 'n/a', not 'no other preferences'
-                if pd.notna(value) and str(value).strip().lower() not in ["", "no", "n/a", "no other preferences"]:
+                
+                # Check if user has provided any value (including "No" - we'll show all selected fields)
+                if pd.notna(value) and str(value).strip() != "":
                     match = re.search(r"\[(.*?)\]", field)
                     if match:
                         label = match.group(1)[:35]
-                        # Remove "Prefer" from the beginning of the label if it exists
-                        label = re.sub(r'^Prefer\s+', '', label, flags=re.IGNORECASE)
-                        requirements.append(label)
-                        # Clean up the preference value
-                        pref_value = str(value).strip()
-                        # Remove "Prefer" and related words from anywhere in the value if they exist (more comprehensive)
-                        pref_value = re.sub(r'\b(Prefer|Preferred|Preference)\b\s*', '', pref_value, flags=re.IGNORECASE)
-                        # Clean up any extra whitespace that might be left
-                        pref_value = re.sub(r'\s+', ' ', pref_value).strip()
-                        # Capitalize the first letter of each word in the remaining text
-                        if pref_value:
-                            pref_value = ' '.join(word.capitalize() for word in pref_value.split())
-                        if pref_value:  # Only add non-empty values
-                            # Split by comma if the value contains multiple preferences
-                            if "," in pref_value:
-                                individual_prefs = [p.strip() for p in pref_value.split(",") if p.strip()]
-                                for individual_pref in individual_prefs:
-                                    all_preferences.append(individual_pref)
-                                    logger.info(f"Added individual preference: '{individual_pref}' from field: '{field}'")
-                            else:
-                                all_preferences.append(pref_value)
-                                logger.info(f"Added preference: '{pref_value}' from field: '{field}'")
+                        original_label = label
+                        value_str = str(value).strip()
+                        
+                        # Extract requirement name for ALL fields with values (no filtering)
+                        clean_requirement = label.strip()
+                        # Remove "Prefer" from the beginning if it exists
+                        clean_requirement = re.sub(r'^Prefer\s+', '', clean_requirement, flags=re.IGNORECASE).strip()
+                        
+                        if clean_requirement:
+                            # Proper capitalization
+                            clean_requirement = ' '.join(word.capitalize() for word in clean_requirement.split())
+                            
+                            # Add ALL requirements without any filtering or duplicate removal
+                            all_requirements.append(clean_requirement)
+                            logger.info(f"Added requirement: '{clean_requirement}' from field: '{original_label}' with user value: '{value_str}'")
+                        
+                        # ORIGINAL PREFERENCES LOGIC (UNCHANGED) - Only applies to preferences
+                        # Only include if value is not empty, not 'no', not 'n/a', not 'no other preferences'
+                        if str(value).strip().lower() not in ["", "no", "n/a", "no other preferences"]:
+                            # Remove "Prefer" from the beginning of the label if it exists
+                            pref_label = re.sub(r'^Prefer\s+', '', label, flags=re.IGNORECASE)
+                            # Clean up the preference value
+                            pref_value = str(value).strip()
+                            # Remove "Prefer" and related words from anywhere in the value if they exist (more comprehensive)
+                            pref_value = re.sub(r'\b(Prefer|Preferred|Preference)\b\s*', '', pref_value, flags=re.IGNORECASE)
+                            # Clean up any extra whitespace that might be left
+                            pref_value = re.sub(r'\s+', ' ', pref_value).strip()
+                            # Capitalize the first letter of each word in the remaining text
+                            if pref_value:
+                                pref_value = ' '.join(word.capitalize() for word in pref_value.split())
+                            if pref_value:  # Only add non-empty values
+                                # Split by comma if the value contains multiple preferences
+                                if "," in pref_value:
+                                    individual_prefs = [p.strip() for p in pref_value.split(",") if p.strip()]
+                                    for individual_pref in individual_prefs:
+                                        # Filter out "No Other Preferences" from individual preferences
+                                        if individual_pref.lower() != "no other preferences":
+                                            all_preferences.append(individual_pref)
+                                            logger.info(f"Added individual preference: '{individual_pref}' from field: '{field}'")
+                                        else:
+                                            logger.info(f"Skipped 'No Other Preferences' from field: '{field}'")
+                                else:
+                                    # Filter out "No Other Preferences" from single preference values
+                                    if pref_value.lower() != "no other preferences":
+                                        all_preferences.append(pref_value)
+                                        logger.info(f"Added preference: '{pref_value}' from field: '{field}'")
+                                    else:
+                                        logger.info(f"Skipped 'No Other Preferences' from field: '{field}'")
             
             logger.info(f"Total preferences collected: {len(all_preferences)}")
             logger.info(f"All preferences before deduplication: {all_preferences}")
             
+            # ORIGINAL PREFERENCES DEDUPLICATION LOGIC (UNCHANGED)
             # Second pass: remove duplicates while maintaining order
             seen_preferences = set()
             unique_preferences = []
@@ -1438,9 +1501,11 @@ def create_last_response_pdf(new_user, new_user_name,email_col, match_percentage
                     logger.info(f"Skipped duplicate preference: '{pref}'")
             
             logger.info(f"Final unique preferences: {unique_preferences}")
+            logger.info(f"Total requirements collected: {len(all_requirements)}")
+            logger.info(f"All requirements: {all_requirements}")
             
-            # Display as two subfields
-            if requirements:
+            # Display Requirements section
+            if all_requirements:
                 pdf.set_y(current_y)
                 pdf.set_x(15)
                 pdf.set_font("Arial", "B", 10)
@@ -1448,7 +1513,7 @@ def create_last_response_pdf(new_user, new_user_name,email_col, match_percentage
                 pdf.cell(0, 5, "Requirements:", ln=1, border=0)  # ln=1 moves to next line
                 pdf.set_font("Arial", "", 10)
                 pdf.set_text_color(0, 0, 0)
-                req_text = ", ".join(requirements)
+                req_text = ", ".join(all_requirements)
                 pdf.set_x(20)
                 # Add right padding by reducing the width of the multi_cell so text doesn't touch the right edge
                 right_padding = 15  # in mm, adjust as needed
@@ -1456,6 +1521,8 @@ def create_last_response_pdf(new_user, new_user_name,email_col, match_percentage
                 pdf.multi_cell(cell_width, 5, req_text, border=0)
                 current_y = pdf.get_y() + 2
                 
+            # ORIGINAL PREFERENCES DISPLAY LOGIC (UNCHANGED)
+            # Only display Preferences section if there are actual preferences to show
             if unique_preferences:
                 pdf.set_y(current_y)
                 pdf.set_x(15)
@@ -2459,50 +2526,81 @@ def create_single_page_match_pdf(
         add_candid_photo_to_second_page(pdf, matched_user, email_col)
         current_y = 45
         current_y += 8  # Add the same spacing as first page after BIODATA
-        # Requirements & Preferences Section
+        
+        # Enhanced Requirements & Preferences Section
         preference_fields = [col for col in matched_user.keys() if "Requirements & Preferences" in col]
         if preference_fields:
             current_y = add_compact_section(pdf, "Requirements & Preferences", current_y)
             current_y += 3
-            # Prepare Requirement and Preferences lists
-            requirements = []
-            all_preferences = []  # Collect all preference values first
             
-            # First pass: collect all preference values from all fields
+            # Enhanced Requirements extraction + Original Preferences logic
+            all_requirements = []
+            all_preferences = []  # Collect all preference values first (ORIGINAL LOGIC)
+            
             logger.info(f"Processing {len(preference_fields)} preference fields for match PDF")
+            
+            # Extract ALL requirement names where user has selected/filled values (NO FILTERING OR DUPLICATE REMOVAL)
             for field in preference_fields:
                 value = matched_user.get(field, "")
-                # Only include if value is not empty, not 'no', not 'n/a', not 'no other preferences'
-                if pd.notna(value) and str(value).strip().lower() not in ["", "no", "n/a", "no other preferences"]:
+                
+                # Check if user has provided any value (including "No" - we'll show all selected fields)
+                if pd.notna(value) and str(value).strip() != "":
                     match = re.search(r"\[(.*?)\]", field)
                     if match:
                         label = match.group(1)[:35]
-                        # Remove "Prefer" from the beginning of the label if it exists
-                        label = re.sub(r'^Prefer\s+', '', label, flags=re.IGNORECASE)
-                        requirements.append(label)
-                        # Clean up the preference value
-                        pref_value = str(value).strip()
-                        # Remove "Prefer" and related words from anywhere in the value if they exist (more comprehensive)
-                        pref_value = re.sub(r'\b(Prefer|Preferred|Preference)\b\s*', '', pref_value, flags=re.IGNORECASE)
-                        # Clean up any extra whitespace that might be left
-                        pref_value = re.sub(r'\s+', ' ', pref_value).strip()
-                        # Capitalize the first letter of each word in the remaining text
-                        if pref_value:
-                            pref_value = ' '.join(word.capitalize() for word in pref_value.split())
-                        if pref_value:  # Only add non-empty values
-                            # Split by comma if the value contains multiple preferences
-                            if "," in pref_value:
-                                individual_prefs = [p.strip() for p in pref_value.split(",") if p.strip()]
-                                for individual_pref in individual_prefs:
-                                    all_preferences.append(individual_pref)
-                                    logger.info(f"Added individual preference: '{individual_pref}' from field: '{field}'")
-                            else:
-                                all_preferences.append(pref_value)
-                                logger.info(f"Added preference: '{pref_value}' from field: '{field}'")
+                        original_label = label
+                        value_str = str(value).strip()
+                        
+                        # Extract requirement name for ALL fields with values (no filtering)
+                        clean_requirement = label.strip()
+                        # Remove "Prefer" from the beginning if it exists
+                        clean_requirement = re.sub(r'^Prefer\s+', '', clean_requirement, flags=re.IGNORECASE).strip()
+                        
+                        if clean_requirement:
+                            # Proper capitalization
+                            clean_requirement = ' '.join(word.capitalize() for word in clean_requirement.split())
+                            
+                            # Add ALL requirements without any filtering or duplicate removal
+                            all_requirements.append(clean_requirement)
+                            logger.info(f"Added requirement: '{clean_requirement}' from field: '{original_label}' with user value: '{value_str}'")
+                        
+                        # ORIGINAL PREFERENCES LOGIC (UNCHANGED) - Only applies to preferences
+                        # Only include if value is not empty, not 'no', not 'n/a', not 'no other preferences'
+                        if str(value).strip().lower() not in ["", "no", "n/a", "no other preferences"]:
+                            # Remove "Prefer" from the beginning of the label if it exists
+                            pref_label = re.sub(r'^Prefer\s+', '', label, flags=re.IGNORECASE)
+                            # Clean up the preference value
+                            pref_value = str(value).strip()
+                            # Remove "Prefer" and related words from anywhere in the value if they exist (more comprehensive)
+                            pref_value = re.sub(r'\b(Prefer|Preferred|Preference)\b\s*', '', pref_value, flags=re.IGNORECASE)
+                            # Clean up any extra whitespace that might be left
+                            pref_value = re.sub(r'\s+', ' ', pref_value).strip()
+                            # Capitalize the first letter of each word in the remaining text
+                            if pref_value:
+                                pref_value = ' '.join(word.capitalize() for word in pref_value.split())
+                            if pref_value:  # Only add non-empty values
+                                # Split by comma if the value contains multiple preferences
+                                if "," in pref_value:
+                                    individual_prefs = [p.strip() for p in pref_value.split(",") if p.strip()]
+                                    for individual_pref in individual_prefs:
+                                        # Filter out "No Other Preferences" from individual preferences
+                                        if individual_pref.lower() != "no other preferences":
+                                            all_preferences.append(individual_pref)
+                                            logger.info(f"Added individual preference: '{individual_pref}' from field: '{field}'")
+                                        else:
+                                            logger.info(f"Skipped 'No Other Preferences' from field: '{field}'")
+                                else:
+                                    # Filter out "No Other Preferences" from single preference values
+                                    if pref_value.lower() != "no other preferences":
+                                        all_preferences.append(pref_value)
+                                        logger.info(f"Added preference: '{pref_value}' from field: '{field}'")
+                                    else:
+                                        logger.info(f"Skipped 'No Other Preferences' from field: '{field}'")
             
             logger.info(f"Total preferences collected for match: {len(all_preferences)}")
             logger.info(f"All preferences before deduplication for match: {all_preferences}")
             
+            # ORIGINAL PREFERENCES DEDUPLICATION LOGIC (UNCHANGED)
             # Second pass: remove duplicates while maintaining order
             seen_preferences = set()
             unique_preferences = []
@@ -2515,8 +2613,11 @@ def create_single_page_match_pdf(
                     logger.info(f"Skipped duplicate preference for match: '{pref}'")
             
             logger.info(f"Final unique preferences for match: {unique_preferences}")
-            # Display as two subfields
-            if requirements:
+            logger.info(f"Total requirements collected for match: {len(all_requirements)}")
+            logger.info(f"All requirements for match: {all_requirements}")
+            
+            # Display Requirements section
+            if all_requirements:
                 pdf.set_y(current_y)
                 pdf.set_x(15)
                 pdf.set_font("Arial", "B", 10)
@@ -2524,13 +2625,16 @@ def create_single_page_match_pdf(
                 pdf.cell(0, 5, "Requirements:", ln=1, border=0)  # ln=1 moves to next line
                 pdf.set_font("Arial", "", 10)
                 pdf.set_text_color(0, 0, 0)
-                req_text = ", ".join(requirements)
+                req_text = ", ".join(all_requirements)
                 pdf.set_x(20)
                 # Add right padding by reducing the width of the multi_cell so text doesn't touch the right edge
                 right_padding = 15  # in mm, adjust as needed
                 cell_width = pdf.w - 20 - right_padding
                 pdf.multi_cell(cell_width, 5, req_text, border=0)
                 current_y = pdf.get_y() + 2
+                
+            # ORIGINAL PREFERENCES DISPLAY LOGIC (UNCHANGED)
+            # Only display Preferences section if there are actual preferences to show
             if unique_preferences:
                 pdf.set_y(current_y)
                 pdf.set_x(15)
@@ -2546,6 +2650,7 @@ def create_single_page_match_pdf(
                 cell_width = pdf.w - 20 - right_padding
                 pdf.multi_cell(cell_width, 5, pref_text, border=0)
                 current_y = pdf.get_y() + 2
+                
         # Location Section
         current_y += 5
         current_y = add_compact_section(pdf, "Current Location", current_y)
@@ -2611,7 +2716,6 @@ def create_single_page_match_pdf(
     except Exception as e:
         logger.error(f"Single-page PDF creation failed: {e}", exc_info=True)
         return None
-
 
 def create_sorted_pdfs_and_email(df):
     """
@@ -3229,7 +3333,7 @@ def process_new_matrimonial_registration():
         
         # Step 7a: Create compatibility text directly from match data (IMPROVED APPROACH)
         logger.info("Creating compatibility text directly from match data...")
-        email_text = create_compatibility_text_directly(top_matches_df)
+        email_text = create_compatibility_text_directly(top_matches_df,new_user_name)
         
         if email_text and email_text != "No matches found":
             logger.info(f"Successfully created compatibility text ({len(email_text)} characters)")
