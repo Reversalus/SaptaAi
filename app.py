@@ -418,7 +418,7 @@ def create_compatibility_text_directly(top_matches, new_user_name=None):
         # Start of the plain text message
         message_text = f"""Dear {name_title_case},
 Congratulations on creating your Sapta.ai Digital Persona.
-Here are your closest matches with Compatibility scores (sorted by highest match percentage):
+Here are your closest matches with Compatibility scores:
 """
         
         match_parts = []
@@ -1238,7 +1238,6 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
     try:
         pdf = EnhancedSinglePageMatchesPDF()
         pdf.add_page()
-
         # Add match percentage display if provided (similar to match PDFs)
         if match_percentage is not None:
             # Add match percentage at top right corner
@@ -1248,23 +1247,18 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
             text_width = pdf.get_string_width(match_text)
             pdf.set_xy(pdf.w - text_width - 15, 15)  # Position at top right
             pdf.cell(text_width, 8, match_text, border=0, align='R')
-
         # Add vertical space after BIODATA
         current_y = 50  # Start below enhanced header
         current_y += 3  # Reduced extra vertical space after BIODATA
-
         # Add profile photo to the right side of the first page
         photo_added = add_enhanced_photo_to_pdf(pdf, new_user, email_col)
-
         if photo_added:
             pdf.left_column_width = 110  # Adjust for larger photo
         else:
             pdf.left_column_width = 140
-            
         # First Page Sections
         # Personal Details Section
         current_y = add_compact_section(pdf, "Personal Details", current_y)
-
         personal_fields = [
             ("Name", "Full Name"),
             ("Birth Date", "Birth Date"),
@@ -1273,7 +1267,7 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
             ("Height", "Height"),
             ("Weight", "Weight"),
             ("Religion", "Religion"),
-            ("Caste / Community", "Caste / Community / Tribe"),
+            ("Caste / Community", "Caste / Community"),
             ("Mother Tongue", "Mother Tongue"),
             ("Nationality", "Nationality"),
         ]
@@ -1293,15 +1287,14 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                     new_user[matching_field].values[0],
                     current_y,
                 )
-                
         # Professional Details Section
         current_y += 5
         current_y = add_compact_section(pdf, "Professional Details", current_y)
-
         career_fields = [
             ("Education", "Education"),
             ("Qualification", "Qualification"),
             ("Occupation", "Occupation"),
+            ("Organization / Company Name", "Organization / Company Name"),
         ]
         for display_name, field_name in career_fields:
             matching_field = next(
@@ -1319,14 +1312,12 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                     new_user[matching_field].values[0],
                     current_y,
                 )
-                
         # Family Information Section
         family_fields = [col for col in new_user.columns if "Family Information" in col]
         if family_fields:
             current_y += 5
             current_y = add_compact_section(pdf, "Family Information", current_y)
             current_y += 3
-            
             family_count = 0
             for field in family_fields:
                 if family_count >= 20 or current_y > 245:
@@ -1336,7 +1327,6 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                     match = re.search(r"\[(.*?)\]", field)
                     if match:
                         label = match.group(1)[:35]
-
                         # --- Start of new logic ---
                         # Set font and position for the label
                         pdf.set_xy(15, current_y)
@@ -1344,27 +1334,21 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                         pdf.set_text_color(50, 50, 50)
                         # Print the label in a cell of fixed width
                         pdf.cell(55, 5, f"{label}", border=0)
-
                         # Set font for the value
                         pdf.set_font("Arial", "", 10)
                         pdf.set_text_color(0, 0, 0)
-
                         # Calculate the remaining width on the page
                         start_x_for_value = 15 + 55  # Left margin + label width
                         right_margin = 15
                         available_width = pdf.w - start_x_for_value - right_margin
-                        
                         # Set the X position to be right after the label
                         pdf.set_x(start_x_for_value)
-                        
                         # Print the full value in a single line using the calculated width
                         pdf.cell(available_width, 5, str(value), border=0)
-
                         # Move to the next line for the next field
                         current_y += 5
                         family_count += 1
                         # --- End of new logic ---
-        
         # Hobbies Section - SIMPLIFIED LOGIC (NO IMAGE WRAPPING)
         hobbies_col = next(
             (
@@ -1378,24 +1362,19 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
             current_y += 5
             current_y = add_compact_section(pdf, "Hobbies & Interests", current_y)
             current_y += 3
-
             hobbies = new_user[hobbies_col].values[0]
             if pd.notna(hobbies) and str(hobbies).strip():
                 hobbies_text = str(hobbies)
-                
                 pdf.set_y(current_y)
                 pdf.set_x(15)
                 pdf.set_font("Arial", "", 10)
                 pdf.set_text_color(0)
-                
                 # Calculate available width from left margin to right margin
                 left_margin = 15
                 right_margin = 15  # Standard right margin
                 available_width = pdf.w - left_margin - right_margin
-                
                 # Check if text fits in single line
                 text_width = pdf.get_string_width(hobbies_text)
-                
                 if text_width > available_width:
                     # Text is too long for single line, wrap it
                     pdf.multi_cell(available_width, 4, hobbies_text, border=0)
@@ -1404,33 +1383,26 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                     # Text fits in single line
                     pdf.cell(available_width, 4, hobbies_text, border=0)
                     current_y += 4
-        
         # Add 'Formal - Full length' photo at the right bottom of the first page (fixed size)
         add_formal_full_length_photo_to_pdf(pdf, new_user, email_col)
-        
         # Second Page Sections
         pdf.add_page()
         # Place candid photo on second page, center right
         add_candid_photo_to_second_page(pdf, new_user, email_col)
         current_y = 45
         current_y += 8  # Add the same spacing as first page after BIODATA
-        
         # Requirements & Preferences Section
         preference_fields = [col for col in new_user.columns if "Requirements & Preferences" in col]
         if preference_fields:
             current_y = add_compact_section(pdf, "Requirements & Preferences", current_y)
             current_y += 3
-            
             # Enhanced Requirements extraction + Original Preferences logic
             all_requirements = []
             all_preferences = []  # Collect all preference values first (ORIGINAL LOGIC)
-            
             logger.info(f"Processing {len(preference_fields)} preference fields")
-            
             # Extract ALL requirement names where user has selected/filled values (NO FILTERING OR DUPLICATE REMOVAL)
             for field in preference_fields:
                 value = new_user[field].values[0]
-                
                 # Check if user has provided any value (including "No" - we'll show all selected fields)
                 if pd.notna(value) and str(value).strip() != "":
                     match = re.search(r"\[(.*?)\]", field)
@@ -1438,20 +1410,16 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                         label = match.group(1)[:35]
                         original_label = label
                         value_str = str(value).strip()
-                        
                         # Extract requirement name for ALL fields with values (no filtering)
                         clean_requirement = label.strip()
                         # Remove "Prefer" from the beginning if it exists
                         clean_requirement = re.sub(r'^Prefer\s+', '', clean_requirement, flags=re.IGNORECASE).strip()
-                        
                         if clean_requirement:
                             # Proper capitalization
                             clean_requirement = ' '.join(word.capitalize() for word in clean_requirement.split())
-                            
                             # Add ALL requirements without any filtering or duplicate removal
                             all_requirements.append(clean_requirement)
                             logger.info(f"Added requirement: '{clean_requirement}' from field: '{original_label}' with user value: '{value_str}'")
-                        
                         # ORIGINAL PREFERENCES LOGIC (UNCHANGED) - Only applies to preferences
                         # Only include if value is not empty, not 'no', not 'n/a', not 'no other preferences'
                         if str(value).strip().lower() not in ["", "no", "n/a", "no other preferences"]:
@@ -1484,10 +1452,8 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                                         logger.info(f"Added preference: '{pref_value}' from field: '{field}'")
                                     else:
                                         logger.info(f"Skipped 'No Other Preferences' from field: '{field}'")
-            
             logger.info(f"Total preferences collected: {len(all_preferences)}")
             logger.info(f"All preferences before deduplication: {all_preferences}")
-            
             # ORIGINAL PREFERENCES DEDUPLICATION LOGIC (UNCHANGED)
             # Second pass: remove duplicates while maintaining order
             seen_preferences = set()
@@ -1499,11 +1465,9 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                     logger.info(f"Added unique preference: '{pref}'")
                 else:
                     logger.info(f"Skipped duplicate preference: '{pref}'")
-            
             logger.info(f"Final unique preferences: {unique_preferences}")
             logger.info(f"Total requirements collected: {len(all_requirements)}")
             logger.info(f"All requirements: {all_requirements}")
-            
             # Display Requirements section
             if all_requirements:
                 pdf.set_y(current_y)
@@ -1520,7 +1484,6 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                 cell_width = pdf.w - 20 - right_padding
                 pdf.multi_cell(cell_width, 5, req_text, border=0)
                 current_y = pdf.get_y() + 2
-                
             # ORIGINAL PREFERENCES DISPLAY LOGIC (UNCHANGED)
             # Only display Preferences section if there are actual preferences to show
             if unique_preferences:
@@ -1538,11 +1501,37 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                 cell_width = pdf.w - 20 - right_padding
                 pdf.multi_cell(cell_width, 5, pref_text, border=0)
                 current_y = pdf.get_y() + 2
-                
+        # Any Other Specific Choice Section
+        any_other_choice_col = next(
+            (
+                col
+                for col in new_user.columns
+                if "any other specific choice" in col.lower()
+            ),
+            None,
+        )
+        if any_other_choice_col:
+            any_other_choice = new_user[any_other_choice_col].values[0]
+            if pd.notna(any_other_choice) and str(any_other_choice).strip():
+                current_y += 5
+                current_y = add_compact_section(
+                    pdf, "Any Other Specific Choice", current_y
+                )
+                current_y += 3
+                pdf.set_y(current_y)
+                pdf.set_x(15)
+                pdf.set_font("Arial", "", 10)
+                pdf.set_text_color(0)
+                # Calculate available width from left margin to right margin
+                left_margin = 15
+                right_margin = 15  # Standard right margin
+                available_width = pdf.w - left_margin - right_margin
+                # Use multi_cell to handle text wrapping automatically
+                pdf.multi_cell(available_width, 4, str(any_other_choice), border=0)
+                current_y = pdf.get_y()
         # Location Section
         current_y += 5
         current_y = add_compact_section(pdf, "Current Location", current_y)
-        
         # Get the city value directly from the City column - improved search
         city_col = None
         # First try exact match for "City"
@@ -1554,7 +1543,6 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
         # Finally try partial match (but avoid preference fields)
         elif any("city" in col.lower() and "preference" not in col.lower() and "metro" not in col.lower() for col in new_user.columns):
             city_col = next(col for col in new_user.columns if "city" in col.lower() and "preference" not in col.lower() and "metro" not in col.lower())
-            
         if city_col:
             city_value = new_user[city_col].values[0] if pd.notna(new_user[city_col].values[0]) else ""
             logger.info(f"DEBUG: Raw city value from column '{city_col}': '{city_value}'")
@@ -1571,7 +1559,6 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                     logger.info(f"DEBUG: Added city field to PDF: '{city_value}'")
         else:
             logger.warning(f"DEBUG: No city column found in data. Available columns: {list(new_user.columns)}")
-            
         # Handle other location fields
         location_fields = [("State", "State"), ("Country", "Country")]
         for display_name, field_name in location_fields:
@@ -1593,19 +1580,16 @@ def create_last_response_pdf(new_user, new_user_name, email_col, match_percentag
                         value,
                         current_y,
                     )
-                    
         # Contact Information (Email only)
         current_y += 5  # Increased spacing between Current Location and Contact Details
         current_y = add_compact_section(pdf, "Contact Details", current_y)
         # Add email field with improved indentation
         current_y = add_compact_field(pdf, "Email", new_user[email_col].values[0], current_y, label_width=50)
-
         # Save the PDF
         output_filename = f"{new_user_name}.pdf"
         pdf.output(output_filename)
         logger.info(f"Created last response PDF: {output_filename}")
         return output_filename
-        
     except Exception as e:
         logger.error(f"Failed to create last response PDF: {e}")
         return None
@@ -2382,7 +2366,7 @@ def create_single_page_match_pdf(
             ("Height", "Height"),
             ("Weight", "Weight"),
             ("Religion", "Religion"),
-            ("Caste / Community", "Caste / Community / Tribe"),
+            ("Caste / Community", "Caste / Community"),
             ("Mother Tongue", "Mother Tongue"),
             ("Nationality", "Nationality"),
         ]
@@ -2405,11 +2389,11 @@ def create_single_page_match_pdf(
         # Professional Details Section
         current_y += 5
         current_y = add_compact_section(pdf, "Professional Details", current_y)
-
         career_fields = [
             ("Education", "Education"),
             ("Qualification", "Qualification"),
             ("Occupation", "Occupation"),
+            ("Organization / Company Name", "Organization / Company Name"),
         ]
         for display_name, field_name in career_fields:
             matching_field = next(
@@ -2435,7 +2419,6 @@ def create_single_page_match_pdf(
             current_y += 5
             current_y = add_compact_section(pdf, "Family Information", current_y)
             current_y += 3
-
             family_count = 0
             for field in family_fields:
                 if family_count >= 20 or current_y > 245:
@@ -2449,35 +2432,27 @@ def create_single_page_match_pdf(
                     match = re.search(r"\[(.*?)\]", field)
                     if match:
                         label = match.group(1)[:35]
-
                         # --- Start of new logic ---
-
                         # Set font and position for the label
                         pdf.set_xy(15, current_y)
                         pdf.set_font("Arial", "B", 10)
                         pdf.set_text_color(50, 50, 50)
                         # Print the label in a cell of fixed width
                         pdf.cell(55, 5, f"{label}", border=0)
-
                         # Set font for the value
                         pdf.set_font("Arial", "", 10)
                         pdf.set_text_color(0, 0, 0)
-
                         # Calculate the remaining width on the page
                         start_x_for_value = 15 + 55  # Left margin + label width
                         right_margin = 15
                         available_width = pdf.w - start_x_for_value - right_margin
-                        
                         # Set the X position to be right after the label
                         pdf.set_x(start_x_for_value)
-                        
                         # Print the full value in a single line using the calculated width
                         pdf.cell(available_width, 5, str(value), border=0)
-
                         # Move to the next line for the next field
                         current_y += 5
                         family_count += 1
-                        
                         # --- End of new logic ---
         # Hobbies Section - SIMPLIFIED LOGIC (NO IMAGE WRAPPING)
         hobbies_col = next(
@@ -2495,20 +2470,16 @@ def create_single_page_match_pdf(
             hobbies = matched_user.get(hobbies_col, "")
             if pd.notna(hobbies) and str(hobbies).strip():
                 hobbies_text = str(hobbies)
-                
                 pdf.set_y(current_y)
                 pdf.set_x(15)
                 pdf.set_font("Arial", "", 10)
                 pdf.set_text_color(0)
-                
                 # Calculate available width from left margin to right margin
                 left_margin = 15
                 right_margin = 15  # Standard right margin
                 available_width = pdf.w - left_margin - right_margin
-                
                 # Check if text fits in single line
                 text_width = pdf.get_string_width(hobbies_text)
-                
                 if text_width > available_width:
                     # Text is too long for single line, wrap it
                     pdf.multi_cell(available_width, 4, hobbies_text, border=0)
@@ -2517,7 +2488,6 @@ def create_single_page_match_pdf(
                     # Text fits in single line
                     pdf.cell(available_width, 4, hobbies_text, border=0)
                     current_y += 4
-
         # Add 'Formal - Full length' photo at the right bottom of the first page (fixed size)
         add_formal_full_length_photo_to_pdf(pdf, matched_user, email_col)
         # Second Page Sections
@@ -2526,23 +2496,22 @@ def create_single_page_match_pdf(
         add_candid_photo_to_second_page(pdf, matched_user, email_col)
         current_y = 45
         current_y += 8  # Add the same spacing as first page after BIODATA
-        
         # Enhanced Requirements & Preferences Section
-        preference_fields = [col for col in matched_user.keys() if "Requirements & Preferences" in col]
+        preference_fields = [
+            col for col in matched_user.keys() if "Requirements & Preferences" in col
+        ]
         if preference_fields:
-            current_y = add_compact_section(pdf, "Requirements & Preferences", current_y)
+            current_y = add_compact_section(
+                pdf, "Requirements & Preferences", current_y
+            )
             current_y += 3
-            
             # Enhanced Requirements extraction + Original Preferences logic
             all_requirements = []
             all_preferences = []  # Collect all preference values first (ORIGINAL LOGIC)
-            
             logger.info(f"Processing {len(preference_fields)} preference fields for match PDF")
-            
             # Extract ALL requirement names where user has selected/filled values (NO FILTERING OR DUPLICATE REMOVAL)
             for field in preference_fields:
                 value = matched_user.get(field, "")
-                
                 # Check if user has provided any value (including "No" - we'll show all selected fields)
                 if pd.notna(value) and str(value).strip() != "":
                     match = re.search(r"\[(.*?)\]", field)
@@ -2550,56 +2519,82 @@ def create_single_page_match_pdf(
                         label = match.group(1)[:35]
                         original_label = label
                         value_str = str(value).strip()
-                        
                         # Extract requirement name for ALL fields with values (no filtering)
                         clean_requirement = label.strip()
                         # Remove "Prefer" from the beginning if it exists
-                        clean_requirement = re.sub(r'^Prefer\s+', '', clean_requirement, flags=re.IGNORECASE).strip()
-                        
+                        clean_requirement = re.sub(
+                            r"^Prefer\s+", "", clean_requirement, flags=re.IGNORECASE
+                        ).strip()
                         if clean_requirement:
                             # Proper capitalization
-                            clean_requirement = ' '.join(word.capitalize() for word in clean_requirement.split())
-                            
+                            clean_requirement = " ".join(
+                                word.capitalize() for word in clean_requirement.split()
+                            )
                             # Add ALL requirements without any filtering or duplicate removal
                             all_requirements.append(clean_requirement)
-                            logger.info(f"Added requirement: '{clean_requirement}' from field: '{original_label}' with user value: '{value_str}'")
-                        
+                            logger.info(
+                                f"Added requirement: '{clean_requirement}' from field: '{original_label}' with user value: '{value_str}'"
+                            )
                         # ORIGINAL PREFERENCES LOGIC (UNCHANGED) - Only applies to preferences
                         # Only include if value is not empty, not 'no', not 'n/a', not 'no other preferences'
-                        if str(value).strip().lower() not in ["", "no", "n/a", "no other preferences"]:
+                        if str(value).strip().lower() not in [
+                            "",
+                            "no",
+                            "n/a",
+                            "no other preferences",
+                        ]:
                             # Remove "Prefer" from the beginning of the label if it exists
-                            pref_label = re.sub(r'^Prefer\s+', '', label, flags=re.IGNORECASE)
+                            pref_label = re.sub(
+                                r"^Prefer\s+", "", label, flags=re.IGNORECASE
+                            )
                             # Clean up the preference value
                             pref_value = str(value).strip()
                             # Remove "Prefer" and related words from anywhere in the value if they exist (more comprehensive)
-                            pref_value = re.sub(r'\b(Prefer|Preferred|Preference)\b\s*', '', pref_value, flags=re.IGNORECASE)
+                            pref_value = re.sub(
+                                r"\b(Prefer|Preferred|Preference)\b\s*",
+                                "",
+                                pref_value,
+                                flags=re.IGNORECASE,
+                            )
                             # Clean up any extra whitespace that might be left
-                            pref_value = re.sub(r'\s+', ' ', pref_value).strip()
+                            pref_value = re.sub(r"\s+", " ", pref_value).strip()
                             # Capitalize the first letter of each word in the remaining text
                             if pref_value:
-                                pref_value = ' '.join(word.capitalize() for word in pref_value.split())
+                                pref_value = " ".join(
+                                    word.capitalize() for word in pref_value.split()
+                                )
                             if pref_value:  # Only add non-empty values
                                 # Split by comma if the value contains multiple preferences
                                 if "," in pref_value:
-                                    individual_prefs = [p.strip() for p in pref_value.split(",") if p.strip()]
+                                    individual_prefs = [
+                                        p.strip() for p in pref_value.split(",") if p.strip()
+                                    ]
                                     for individual_pref in individual_prefs:
                                         # Filter out "No Other Preferences" from individual preferences
                                         if individual_pref.lower() != "no other preferences":
                                             all_preferences.append(individual_pref)
-                                            logger.info(f"Added individual preference: '{individual_pref}' from field: '{field}'")
+                                            logger.info(
+                                                f"Added individual preference: '{individual_pref}' from field: '{field}'"
+                                            )
                                         else:
-                                            logger.info(f"Skipped 'No Other Preferences' from field: '{field}'")
+                                            logger.info(
+                                                f"Skipped 'No Other Preferences' from field: '{field}'"
+                                            )
                                 else:
                                     # Filter out "No Other Preferences" from single preference values
                                     if pref_value.lower() != "no other preferences":
                                         all_preferences.append(pref_value)
-                                        logger.info(f"Added preference: '{pref_value}' from field: '{field}'")
+                                        logger.info(
+                                            f"Added preference: '{pref_value}' from field: '{field}'"
+                                        )
                                     else:
-                                        logger.info(f"Skipped 'No Other Preferences' from field: '{field}'")
-            
+                                        logger.info(
+                                            f"Skipped 'No Other Preferences' from field: '{field}'"
+                                        )
             logger.info(f"Total preferences collected for match: {len(all_preferences)}")
-            logger.info(f"All preferences before deduplication for match: {all_preferences}")
-            
+            logger.info(
+                f"All preferences before deduplication for match: {all_preferences}"
+            )
             # ORIGINAL PREFERENCES DEDUPLICATION LOGIC (UNCHANGED)
             # Second pass: remove duplicates while maintaining order
             seen_preferences = set()
@@ -2611,11 +2606,11 @@ def create_single_page_match_pdf(
                     logger.info(f"Added unique preference for match: '{pref}'")
                 else:
                     logger.info(f"Skipped duplicate preference for match: '{pref}'")
-            
             logger.info(f"Final unique preferences for match: {unique_preferences}")
-            logger.info(f"Total requirements collected for match: {len(all_requirements)}")
+            logger.info(
+                f"Total requirements collected for match: {len(all_requirements)}"
+            )
             logger.info(f"All requirements for match: {all_requirements}")
-            
             # Display Requirements section
             if all_requirements:
                 pdf.set_y(current_y)
@@ -2632,7 +2627,6 @@ def create_single_page_match_pdf(
                 cell_width = pdf.w - 20 - right_padding
                 pdf.multi_cell(cell_width, 5, req_text, border=0)
                 current_y = pdf.get_y() + 2
-                
             # ORIGINAL PREFERENCES DISPLAY LOGIC (UNCHANGED)
             # Only display Preferences section if there are actual preferences to show
             if unique_preferences:
@@ -2650,7 +2644,102 @@ def create_single_page_match_pdf(
                 cell_width = pdf.w - 20 - right_padding
                 pdf.multi_cell(cell_width, 5, pref_text, border=0)
                 current_y = pdf.get_y() + 2
+
+        # NEW SECTION: Any Other Specific Choice
+        # DEBUG: Print all available columns to help identify the correct column name
+        logger.info(f"DEBUG: All available columns: {list(matched_user.keys())}")
+        
+        # Search for "Any Other Specific Choice" column with multiple variations
+        specific_choice_col = None
+        
+        # Try multiple possible column name variations
+        possible_names = [
+            "Any Other Specific Choice",
+            "any other specific choice",
+            "Any other specific choice",
+            "Other Specific Choice",
+            "Specific Choice",
+            "Other Choice"
+        ]
+        
+        # First try exact matches
+        for name in possible_names:
+            if name in matched_user.keys():
+                specific_choice_col = name
+                break
+        
+        # If not found, try partial matches
+        if not specific_choice_col:
+            for col in matched_user.keys():
+                if any(keyword in col.lower() for keyword in ["specific choice", "other choice", "other specific"]):
+                    specific_choice_col = col
+                    break
+        
+        logger.info(f"DEBUG: Found specific choice column: '{specific_choice_col}'")
+        
+        if specific_choice_col:
+            specific_choice_value = matched_user.get(specific_choice_col, "")
+            logger.info(f"DEBUG: Raw specific choice value: '{specific_choice_value}'")
+            logger.info(f"DEBUG: Value type: {type(specific_choice_value)}")
+            logger.info(f"DEBUG: Is not null: {pd.notna(specific_choice_value)}")
+            logger.info(f"DEBUG: Stripped value: '{str(specific_choice_value).strip()}'")
+            
+            # More lenient content validation - show the section even with minimal content
+            if pd.notna(specific_choice_value) and str(specific_choice_value).strip():
+                choice_text = str(specific_choice_value).strip()
                 
+                # Only skip if it's clearly empty or a negative response
+                skip_values = ["", "no", "n/a", "none", "nil", "not applicable", "-"]
+                should_skip = choice_text.lower() in skip_values
+                
+                logger.info(f"DEBUG: Should skip section: {should_skip}")
+                
+                if not should_skip:
+                    current_y += 5
+                    current_y = add_compact_section(pdf, "Any Other Specific Choice", current_y)
+                    current_y += 3
+                    
+                    # Set font and position
+                    pdf.set_y(current_y)
+                    pdf.set_x(15)
+                    pdf.set_font("Arial", "", 10)
+                    pdf.set_text_color(0, 0, 0)
+                    
+                    # Calculate available width
+                    left_margin = 15
+                    right_margin = 15
+                    available_width = pdf.w - left_margin - right_margin
+                    
+                    # Check if text fits in single line
+                    text_width = pdf.get_string_width(choice_text)
+                    if text_width > available_width:
+                        # Text is too long for single line, wrap it
+                        pdf.multi_cell(available_width, 5, choice_text, border=0)
+                        current_y = pdf.get_y() + 2
+                    else:
+                        # Text fits in single line
+                        pdf.cell(available_width, 5, choice_text, border=0)
+                        current_y += 7
+                    
+                    logger.info(f"SUCCESS: Added 'Any Other Specific Choice' section with content: '{choice_text}'")
+                else:
+                    logger.info(f"SKIPPED: 'Any Other Specific Choice' contains skip value: '{choice_text}'")
+            else:
+                logger.info("SKIPPED: 'Any Other Specific Choice' field is empty or null")
+        else:
+            logger.error("ERROR: 'Any Other Specific Choice' column not found in the data")
+            # Force add the section for testing (remove this after debugging)
+            logger.info("FORCE ADDING: Adding test section for debugging")
+            current_y += 5
+            current_y = add_compact_section(pdf, "Any Other Specific Choice", current_y)
+            current_y += 3
+            pdf.set_y(current_y)
+            pdf.set_x(15)
+            pdf.set_font("Arial", "", 10)
+            pdf.set_text_color(0, 0, 0)
+            pdf.cell(0, 5, "Column not found - check logs for available columns", border=0)
+            current_y += 7
+
         # Location Section
         current_y += 5
         current_y = add_compact_section(pdf, "Current Location", current_y)
@@ -2660,11 +2749,29 @@ def create_single_page_match_pdf(
         if "City" in matched_user.keys():
             city_col = "City"
         # Then try case-insensitive search with stripped spaces (but avoid preference fields)
-        elif any(col.strip().lower() == "city" and "preference" not in col.lower() for col in matched_user.keys()):
-            city_col = next(col for col in matched_user.keys() if col.strip().lower() == "city" and "preference" not in col.lower())
+        elif any(
+            col.strip().lower() == "city" and "preference" not in col.lower()
+            for col in matched_user.keys()
+        ):
+            city_col = next(
+                col
+                for col in matched_user.keys()
+                if col.strip().lower() == "city" and "preference" not in col.lower()
+            )
         # Finally try partial match (but avoid preference fields)
-        elif any("city" in col.lower() and "preference" not in col.lower() and "metro" not in col.lower() for col in matched_user.keys()):
-            city_col = next(col for col in matched_user.keys() if "city" in col.lower() and "preference" not in col.lower() and "metro" not in col.lower())
+        elif any(
+            "city" in col.lower()
+            and "preference" not in col.lower()
+            and "metro" not in col.lower()
+            for col in matched_user.keys()
+        ):
+            city_col = next(
+                col
+                for col in matched_user.keys()
+                if "city" in col.lower()
+                and "preference" not in col.lower()
+                and "metro" not in col.lower()
+            )
         if city_col:
             city_value = matched_user.get(city_col, "")
             logger.info(f"DEBUG: Raw city value from column '{city_col}': '{city_value}'")
@@ -2673,14 +2780,18 @@ def create_single_page_match_pdf(
                 city_value = str(city_value).strip()
                 logger.info(f"DEBUG: After strip city value: '{city_value}'")
                 # Remove any prefixes like "City:" or "Prefer"
-                city_value = re.sub(r'^(City:|Prefer)\s*', '', city_value, flags=re.IGNORECASE)
+                city_value = re.sub(
+                    r"^(City:|Prefer)\s*", "", city_value, flags=re.IGNORECASE
+                )
                 logger.info(f"DEBUG: After regex cleanup city value: '{city_value}'")
                 # Don't truncate city names - use the full cleaned value
                 if city_value:
                     current_y = add_compact_field(pdf, "City", city_value, current_y)
                     logger.info(f"DEBUG: Added city field to PDF: '{city_value}'")
         else:
-            logger.warning(f"DEBUG: No city column found in data. Available columns: {list(matched_user.keys())}")
+            logger.warning(
+                f"DEBUG: No city column found in data. Available columns: {list(matched_user.keys())}"
+            )
         # Handle other location fields
         location_fields = [("State", "State"), ("Country", "Country")]
         for display_name, field_name in location_fields:
@@ -2706,7 +2817,9 @@ def create_single_page_match_pdf(
         current_y += 5  # Increased spacing between Current Location and Contact Details
         current_y = add_compact_section(pdf, "Contact Details", current_y)
         # Add email field with improved indentation
-        current_y = add_compact_field(pdf, "Email", matched_user.get(email_col, "N/A"), current_y, label_width=50)
+        current_y = add_compact_field(
+            pdf, "Email", matched_user.get(email_col, "N/A"), current_y, label_width=50
+        )
         # Save the PDF
         matched_user_name = matched_user.get("Full Name", "Unknown").replace(" ", "_")
         output_filename = f"{matched_user_name}.pdf"
@@ -2716,7 +2829,6 @@ def create_single_page_match_pdf(
     except Exception as e:
         logger.error(f"Single-page PDF creation failed: {e}", exc_info=True)
         return None
-
 def create_sorted_pdfs_and_email(df):
     """
     Main function to process matches, create PDFs, and email in correct sequence.
@@ -2847,7 +2959,8 @@ def send_email_with_multiple_pdfs(recipient_email, message, pdf_files, user_name
         
         # Create the container email message
         msg = MIMEMultipart('mixed')
-        msg["Subject"] = f"Sapta.ai Persona Matches for {user_name}"
+        # Updated subject line for clarity
+        msg["Subject"] = f"Admin Copy: Sapta.ai Persona Matches for {user_name}"
         msg["From"] = SENDER_EMAIL
         msg["To"] = recipient_email
         
@@ -3183,7 +3296,7 @@ def create_email_message(new_user_name, top_matches):
         </div>
         <p>Dear {name_title_case},</p>
         <p>Congratulations on creating your Sapta.ai Digital Persona.</p>
-        <p>Here are your closest matches with Compatibility scores (sorted by highest match percentage):</p>
+        <p>Here are your closest matches with Compatibility scores:</p>
     """
     
     if isinstance(top_matches, pd.DataFrame):
@@ -3346,12 +3459,12 @@ def process_new_matrimonial_registration():
                 logger.warning("Email text extraction also failed, using truncated email message")
                 email_text = str(email_message)[:1000] if email_message else "No email content available"
 
-        # Step 8: Send email with PDF attachments to user
-        logger.info(f"Sending email to {new_user_email}...")
+        # Step 8: Send email with PDF attachments to admin only
+        logger.info(f"Sending email to admin only at {ADMIN_EMAIL}...")
         
         # Ensure all parameters are properly passed
         email_sent = send_email_with_multiple_pdfs(
-            new_user_email, 
+            ADMIN_EMAIL, 
             email_message, 
             pdf_files, 
             new_user_name, 
@@ -3366,35 +3479,14 @@ def process_new_matrimonial_registration():
         
         if email_sent:
             logger.info(
-                f"Successfully sent email with {len(pdf_files)} PDF attachments to {new_user_email}"
+                f"Successfully sent email with {len(pdf_files)} PDF attachments to admin only at {ADMIN_EMAIL}"
             )
-            # Step 9: Send copy to admin
-            logger.info("Sending copy of user email to admin...")
-            admin_copy_sent = send_admin_copy_of_user_email(
-                new_user_name, new_user_email, email_message, pdf_files
-            )
-            if admin_copy_sent:
-                logger.info("Successfully sent admin copy of user email")
-            else:
-                logger.warning(
-                    "Failed to send admin copy, but user email was successful"
-                )
-            # Step 10: Send last response and matches to admin
-            if pdf_files:
-                admin_notification_sent = send_admin_last_response_and_matches(
-                    new_user,
-                    new_user_name,
-                    new_user_email,
-                    pdf_files
-                )
-                if admin_notification_sent:
-                    logger.info("Successfully sent last response and matches to admin")
-                else:
-                    logger.warning("Failed to send last response and matches to admin")
+            # The original logic for sending an admin copy is now redundant, as the main email is sent to the admin.
+            # The subsequent send_admin_last_response_and_matches is also redundant as the main email now contains all the PDFs.
         else:
-            logger.error(f"Failed to send email to {new_user_email}")
+            logger.error(f"Failed to send email to admin at {ADMIN_EMAIL}")
         
-        # Step 11: Clean up temporary files
+        # Step 9: Clean up temporary files
         logger.info("Cleaning up temporary PDF files...")
         cleanup_pdf_files(pdf_files)
         return email_sent
@@ -3403,84 +3495,6 @@ def process_new_matrimonial_registration():
         logger.error(
             f"Critical error in matrimonial processing: {str(e)}", exc_info=True
         )
-        return False    
-def process_specific_user_by_email(user_email):
-    """
-    Process matching for a specific user by their email address
-    Useful for re-processing or testing specific cases
-    """
-    try:
-        logger.info(f"Processing specific user: {user_email}")
-        # Fetch data from Google Sheets
-        df = fetch_data_from_google_sheets()
-        if df is None or df.empty:
-            logger.error("No data retrieved from Google Sheets")
-            return False
-        # Find email column
-        possible_email_cols = [col for col in df.columns if "email" in col.lower()]
-        if not possible_email_cols:
-            logger.error("No email column found")
-            return False
-        email_col = possible_email_cols[0]
-        # Filter for specific user
-        user_mask = df[email_col].str.strip().str.lower() == user_email.strip().lower()
-        if not user_mask.any():
-            logger.error(f"User with email {user_email} not found in the data")
-            return False
-        # Move the specific user to the end (simulate new registration)
-        user_row = df[user_mask].copy()
-        other_rows = df[~user_mask].copy()
-        df_reordered = pd.concat([other_rows, user_row], ignore_index=True)
-        # Process the reordered data
-        result = process_matrimonial_data(df_reordered)
-        if not result or len(result) < 6:
-            logger.error("Failed to process matrimonial data")
-            return False
-        (
-            new_user,
-            new_user_name,
-            new_user_email,
-            new_user_whatsapp,
-            new_user_birth_date,
-            new_user_location,
-            top_matches_df,
-            top_percentages,
-            top_matches_df
-        ) = result
-        if top_matches_df is None or len(top_matches_df) == 0:
-            logger.warning(f"No matches found for {new_user_name}")
-            return True
-        # Continue with PDF creation and email sending
-        log_match_results(new_user_name, new_user_email, top_matches_df)
-        # Create PDFs and send emails
-        pdf_files = create_individual_match_pdfs(
-            top_matches_df, top_percentages, new_user_name, email_col
-        )
-        if not pdf_files:
-            logger.error("Failed to create any PDF files")
-            return False
-        # Create and send email
-        email_message = create_email_message(new_user_name, top_matches_df)
-        email_sent = send_email_with_multiple_pdfs(
-            new_user_email, email_message, pdf_files, new_user_name, new_user_whatsapp, new_user_email, new_user_birth_date, new_user_location, None, None, None
-        )
-        if email_sent:
-            # Send admin copy
-            admin_copy_sent = send_admin_copy_of_user_email(
-                new_user_name, new_user_email, email_message, pdf_files
-            )
-            # Send last response and matches to admin
-            admin_notification_sent = send_admin_last_response_and_matches(
-                new_user,
-                new_user_name,
-                new_user_email,
-                pdf_files
-            )
-            # Clean up
-            cleanup_pdf_files(pdf_files)
-            return email_sent
-    except Exception as e:
-        logger.error(f"Error processing specific user: {str(e)}", exc_info=True)
         return False
 def upload_pdf_to_drive_and_get_url(pdf_filename, user_name):
     """Upload PDF to Google Drive using OAuth and return a shareable URL"""
